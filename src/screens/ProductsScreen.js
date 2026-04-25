@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -6,20 +6,24 @@ import {
   Image, 
   TouchableOpacity, 
   StyleSheet, 
-  ActivityIndicator 
+  ActivityIndicator,
+  TextInput,
+  RefreshControl 
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useCart } from '../context/CartContext';
+import Toast from 'react-native-toast-message';
 
 const ProductsScreen = ({ navigation }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   
-  // Bring in our global state and dispatcher
   const { state, dispatch } = useCart();
 
-  // Dynamically add the Logout button to the top header 
+  // 1. RESTORED LOGOUT BUTTON
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -33,34 +37,39 @@ const ProductsScreen = ({ navigation }) => {
   }, [navigation]);
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('token'); // Clear auth token [cite: 145]
-    dispatch({ type: 'CLEAR_CART' }); // Wipe global cart state [cite: 147]
-    
-    // Reset the entire navigation stack and push user back to Login [cite: 148]
+    await AsyncStorage.removeItem('token');
+    dispatch({ type: 'CLEAR_CART' });
     navigation.getParent()?.reset({
       index: 0,
       routes: [{ name: 'Login' }],
     });
   };
 
-  // Fetch the data on screen load [cite: 119]
+  const fetchProducts = async () => {
+    try {
+      const response = await axios.get('https://dummyjson.com/products');
+      setProducts(response.data.products);
+    } catch (error) {
+      console.error("Failed to fetch products:", error);
+    }
+  };
+
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const response = await axios.get('https://dummyjson.com/products');
-        setProducts(response.data.products);
-      } catch (error) {
-        console.error("Failed to fetch products:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProducts();
+    fetchProducts().finally(() => setLoading(false));
   }, []);
 
-  // The component that renders every individual item in the FlatList [cite: 119]
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await fetchProducts();
+    setRefreshing(false);
+  }, []);
+
+  const filteredProducts = products.filter(product => 
+    product.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const renderProduct = ({ item }) => {
-    // Check if this specific item is already sitting in our global cart state
     const cartItem = state.cartItems.find(c => c.id === item.id);
     const currentQuantity = cartItem ? cartItem.quantity : 0;
 
@@ -74,29 +83,24 @@ const ProductsScreen = ({ navigation }) => {
           <Text style={styles.price}>${item.price.toFixed(2)}</Text>
         </View>
 
-        {/* Dynamic Cart Controls  */}
         {currentQuantity > 0 ? (
-          <View style={styles.quantityContainer}>
-            <TouchableOpacity 
-              style={styles.qtyBtn} 
-              onPress={() => dispatch({ type: 'UPDATE_QUANTITY', payload: { id: item.id, amount: -1 } })}
-            >
-              <Text style={styles.qtyBtnText}>-</Text>
-            </TouchableOpacity>
-            
-            <Text style={styles.qtyValue}>{currentQuantity}</Text>
-            
-            <TouchableOpacity 
-              style={styles.qtyBtn} 
-              onPress={() => dispatch({ type: 'UPDATE_QUANTITY', payload: { id: item.id, amount: 1 } })}
-            >
-              <Text style={styles.qtyBtnText}>+</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={[styles.addBtn, styles.addedBtn]} disabled>
+            <Text style={styles.addedBtnText}>✓ Added to Cart</Text>
+          </TouchableOpacity>
         ) : (
+          // 2. MOVED TOAST LOGIC HERE
           <TouchableOpacity 
             style={styles.addBtn} 
-            onPress={() => dispatch({ type: 'ADD_TO_CART', payload: item })}
+            onPress={() => {
+              dispatch({ type: 'ADD_TO_CART', payload: item });
+              Toast.show({
+                type: 'success',
+                text1: 'Added to Cart',
+                text2: `${item.title} was added to your cart.`,
+                position: 'top',
+                visibilityTime: 1000,
+              });
+            }}
           >
             <Text style={styles.addBtnText}>Add to Cart</Text>
           </TouchableOpacity>
@@ -115,11 +119,32 @@ const ProductsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search products..."
+          placeholderTextColor="#888"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+      </View>
+
       <FlatList
-        data={products}
+        data={filteredProducts}
         keyExtractor={item => item.id.toString()}
         renderItem={renderProduct}
         contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            tintColor="#0a84ff" 
+            colors={['#0a84ff']} 
+          />
+        }
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>No products found.</Text>
+        }
       />
     </View>
   );
@@ -131,6 +156,28 @@ const styles = StyleSheet.create({
   listContainer: { padding: 16 },
   logoutButton: { marginRight: 16 },
   logoutText: { color: '#ff453a', fontWeight: 'bold', fontSize: 16 },
+  
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: '#121212',
+  },
+  searchInput: {
+    backgroundColor: '#1e1e1e',
+    color: '#ffffff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333333',
+    fontSize: 16,
+  },
+  emptyText: {
+    color: '#888',
+    textAlign: 'center',
+    marginTop: 24,
+    fontSize: 16,
+  },
   
   card: {
     backgroundColor: '#1e1e1e',
@@ -155,25 +202,12 @@ const styles = StyleSheet.create({
   },
   addBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
   
-  quantityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#2c2c2e',
-    padding: 8,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
+  addedBtn: {
+    backgroundColor: 'rgba(50, 215, 75, 0.15)',
+    borderTopWidth: 1,
+    borderColor: 'rgba(50, 215, 75, 0.3)',
   },
-  qtyBtn: {
-    backgroundColor: '#3a3a3c',
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  qtyBtnText: { color: '#ffffff', fontSize: 20, fontWeight: 'bold' },
-  qtyValue: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
+  addedBtnText: { color: '#32d74b', fontSize: 16, fontWeight: 'bold' },
 });
 
 export default ProductsScreen;

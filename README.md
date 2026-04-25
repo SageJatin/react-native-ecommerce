@@ -53,3 +53,9 @@ For this application, I implemented the recommended **Context API paired with `u
 ## Assumptions & Trade-offs
 * **Authentication Security:** The token is stored in `AsyncStorage` for persistence. In a production environment with real user data, this would be swapped for `expo-secure-store` to encrypt the token.
 * **Dark Mode Default:** To ensure a cohesive and modern UI across all screens, the application forces a dark theme implementation rather than relying purely on the system device settings.
+
+## Native Enhancements
+* **Pull-to-Refresh:** Implemented native `RefreshControl` on the `FlatList` for intuitive API refetching.
+* **Native Toast Notifications:** Integrated `react-native-toast-message` for non-intrusive bottom-up alerts.
+* **Live Search:** Added a native `<TextInput>` for real-time catalog filtering.
+* **OLED Dark Mode:** Styled the application with a deep dark theme and subtle borders to reduce eye strain and feel premium.
