@@ -2,6 +2,8 @@
 
 A fully functional React Native mobile application built with Expo. It features a mock authentication flow, dark-themed UI, Bottom Tab Navigation, and a fully persistent shopping cart.
 
+**Video Walkthrough:** [View the Video Here](https://www.loom.com/share/f325060dd9154dd9b723c064fe1bfc6e)
+
 ## Tech Stack
 * **Framework:** React Native (Expo)
 * **Navigation:** React Navigation (Native Stack + Bottom Tabs)
